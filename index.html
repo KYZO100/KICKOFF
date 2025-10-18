@@ -1,83 +1,46 @@
+<?php
+// stream-91.php
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Video Embed</title>
+<title>Stream 91</title>
 <style>
-  body, html {
-    margin: 0;
-    height: 100%;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    background: #000;
-  }
-  #video-container {
-    position: relative;
-    width: 80%;
-    height: 60%;
-  }
-  iframe {
-    width: 100%;
-    height: 100%;
-    border: 0;
-  }
-  #controls {
-    position: absolute;
-    bottom: 10px;
-    left: 10px;
-    display: flex;
-    gap: 10px;
-  }
-  button {
-    padding: 8px 12px;
-    font-size: 16px;
-    cursor: pointer;
-  }
+  html, body { margin:0; padding:0; height:100%; background:#000; }
+  #video-container { width:100%; height:100%; }
+  video { width:100%; height:100%; background:#000; }
 </style>
 </head>
 <body>
+<iframe 
+  src="https://dlhd.dad/stream/stream-91.php?fullscreen=true&mute=false" 
+  width="100%" height="100%" style="border:0;" allowfullscreen>
+</iframe>
 
-<div id="video-container">
-  <iframe id="video-frame" src="https://dlhd.dad/stream/stream-91.php" allowfullscreen muted></iframe>
-  <div id="controls">
-    <button id="fullscreen-btn">F: Fullscreen</button>
-    <button id="unmute-btn">M: Unmute</button>
-  </div>
-</div>
 
 <script>
-const iframe = document.getElementById('video-frame');
-const fullscreenBtn = document.getElementById('fullscreen-btn');
-const unmuteBtn = document.getElementById('unmute-btn');
+// Get URL parameters
+const params = new URLSearchParams(window.location.search);
+const fullscreen = params.get('fullscreen') === 'true';
+const mute = params.get('mute') === 'false';
 
-// Fullscreen functionality
-fullscreenBtn.addEventListener('click', () => {
-  if (iframe.requestFullscreen) {
-    iframe.requestFullscreen();
-  } else if (iframe.webkitRequestFullscreen) { /* Safari */
-    iframe.webkitRequestFullscreen();
-  } else if (iframe.msRequestFullscreen) { /* IE11 */
-    iframe.msRequestFullscreen();
-  }
-});
+// Get video element
+const video = document.getElementById('stream-video');
+video.muted = !mute;
 
-// Unmute functionality (requires the iframe content to allow it)
-unmuteBtn.addEventListener('click', () => {
-  // Send a message to the iframe if it has a video element that supports postMessage
-  iframe.contentWindow.postMessage({ action: 'unmute' }, '*');
-});
+// Try to play (may require user interaction in some browsers)
+video.play().catch(() => console.log('Autoplay blocked'));
 
-// Optional: keyboard shortcuts
-document.addEventListener('keydown', (e) => {
-  if (e.key.toLowerCase() === 'f') {
-    fullscreenBtn.click();
-  }
-  if (e.key.toLowerCase() === 'm') {
-    unmuteBtn.click();
-  }
-});
+// Try fullscreen if requested
+if (fullscreen) {
+  setTimeout(() => {
+    if (video.requestFullscreen) video.requestFullscreen();
+    else if (video.webkitRequestFullscreen) video.webkitRequestFullscreen();
+    else if (video.msRequestFullscreen) video.msRequestFullscreen();
+  }, 500);
+}
 </script>
 
 </body>
