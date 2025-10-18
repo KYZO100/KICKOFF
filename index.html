@@ -1,32 +1,213 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Fullscreen Autoplay Player</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Custom HLS Player Wrapper</title>
   <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      overflow: hidden;
-      background-color: black;
+    html,body { height:100%; margin:0; background:#000; }
+    #app { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
+    video {
+      width:100%;
+      height:100%;
+      background:#000;
+      outline:none;
     }
-    iframe {
-      width: 100%;
-      height: 100%;
-      border: none;
+    #overlay {
+      position:absolute;
+      z-index:40;
+      left:12px;
+      top:12px;
+      color:#fff;
+      font-size:13px;
+      background: rgba(0,0,0,0.4);
+      padding:6px 10px;
+      border-radius:8px;
+      backdrop-filter: blur(4px);
     }
+    #controls {
+      position:absolute;
+      z-index:45;
+      right:12px;
+      bottom:12px;
+      display:flex;
+      gap:8px;
+    }
+    .btn {
+      background: rgba(255,255,255,0.95);
+      color:#000;
+      padding:8px 12px;
+      border-radius:8px;
+      cursor:pointer;
+      font-weight:600;
+      box-shadow:0 6px 16px rgba(0,0,0,0.45);
+    }
+    .hidden { display:none; }
   </style>
 </head>
 <body>
-  <iframe 
-    src="https://pww1a3caoxythv5bbtkvaipjgphu1vpvbhon4kjuh6vmqvrrznohu2s9jqcfmwy.sokii.shop/player.php?match=match1&key=c0ae1ada6eebd7e6cc5b88b1d2b71547&autoplay=1"
-    frameborder="0"
-    allow="autoplay; fullscreen"
-    allowfullscreen
-    webkitallowfullscreen
-    mozallowfullscreen>
-  </iframe>
+  <div id="app">
+    <div id="overlay">Custom player wrapper</div>
+
+    <!-- The video element -->
+    <video id="player"
+           playsinline
+           controls
+           crossorigin="anonymous"
+           autoplay
+           muted
+           webkit-playsinline
+           ></video>
+
+    <!-- Small fallback controls (useful if a human can click) -->
+    <div id="controls">
+      <div id="playBtn" class="btn">Play (click)</div>
+      <div id="unmuteBtn" class="btn">Unmute (click)</div>
+    </div>
+  </div>
+
+  <!-- hls.js (CDN) - used only when needed (non-Safari) -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.5/dist/hls.min.js"></script>
+  <script>
+    (function(){
+      // ======= CONFIGURE THIS SOURCE URL (already set to your URL) =======
+      const HLS_SRC = "https://1805c4012b4cda.sokii.shop/kooora/d4f9ab7dsd5sabeins1111_hd?ts=1760784997&nonce=2NdJ1tl1&token=1593141895";
+      // ==================================================================
+
+      const video = document.getElementById('player');
+      const playBtn = document.getElementById('playBtn');
+      const unmuteBtn = document.getElementById('unmuteBtn');
+
+      function initPlayer() {
+        // Safari supports HLS natively; other browsers need hls.js
+        const isNativeHls = video.canPlayType('application/vnd.apple.mpegurl');
+        if (isNativeHls) {
+          video.src = HLS_SRC;
+        } else if (window.Hls && Hls.isSupported()) {
+          const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
+          hls.loadSource(HLS_SRC);
+          hls.attachMedia(video);
+          hls.on(Hls.Events.ERROR, function (event, data) {
+            console.warn('hls.js event', event, data);
+            // Post error to parent for diagnostics
+            postParent({ type: 'hls-error', data: String(data) });
+          });
+        } else {
+          // no hls support
+          postParent({ type: 'error', message: 'HLS not supported in this browser' });
+        }
+      }
+
+      // Try autoplay muted on load (allowed by browsers)
+      async function tryAutoplayMuted() {
+        try {
+          video.muted = true;
+          await video.play();
+          postParent({ type: 'playing', muted: true });
+        } catch (err) {
+          postParent({ type: 'play-failed', error: String(err) });
+        }
+      }
+
+      // Attempt to unmute (may require user gesture; may be blocked)
+      async function tryUnmuteAndPlay() {
+        try {
+          video.muted = false;
+          await video.play();
+          postParent({ type: 'playing', muted: false });
+          return true;
+        } catch (err) {
+          // unmute failed (likely browser blocked)
+          video.muted = true; // revert to muted
+          postParent({ type: 'unmute-failed', error: String(err) });
+          return false;
+        }
+      }
+
+      // Helper: send postMessage to parent window (if any)
+      function postParent(msg) {
+        try {
+          window.parent.postMessage(msg, '*');
+        } catch(e) {
+          console.log('postParent failed', e);
+        }
+      }
+
+      // Listen for postMessage commands (Upstream or other parent can call these)
+      window.addEventListener('message', async (ev) => {
+        const data = ev.data;
+        if (!data || typeof data !== 'object') return;
+
+        switch (data.type) {
+          case 'play':
+            try { await video.play(); postParent({ type: 'played' }); }
+            catch(err){ postParent({ type:'play-error', error:String(err)}); }
+            break;
+          case 'pause':
+            video.pause();
+            postParent({ type:'paused' });
+            break;
+          case 'unmute':
+            await tryUnmuteAndPlay();
+            break;
+          case 'mute':
+            video.muted = true;
+            postParent({ type:'muted' });
+            break;
+          case 'status':
+            postParent({ type:'status', playing: !video.paused && !video.ended, muted: video.muted, currentTime: video.currentTime });
+            break;
+          case 'reload':
+            // reload the source (useful to reapply autoplay flags)
+            const cur = video.src || HLS_SRC;
+            video.src = '';
+            setTimeout(() => {
+              video.src = cur;
+              tryAutoplayMuted();
+            }, 200);
+            postParent({ type:'reloaded' });
+            break;
+          default:
+            // ignore unknown messages
+            break;
+        }
+      }, false);
+
+      // UI buttons for manual testing (if clicking is available)
+      playBtn.addEventListener('click', async () => {
+        try {
+          await video.play();
+          postParent({ type: 'played-via-click' });
+        } catch (err) {
+          postParent({ type: 'play-click-failed', error: String(err) });
+        }
+      });
+
+      unmuteBtn.addEventListener('click', async () => {
+        const ok = await tryUnmuteAndPlay();
+        if (ok) unmuteBtn.classList.add('hidden');
+      });
+
+      // Initialize and attempt autoplay muted
+      initPlayer();
+
+      // give the player a short time to attach streams, then attempt autoplay
+      window.addEventListener('load', () => {
+        setTimeout(() => tryAutoplayMuted(), 400);
+      });
+
+      // Fallback: if loaded in a top-level browser and no parent, still try autoplay
+      setTimeout(() => {
+        tryAutoplayMuted();
+      }, 1500);
+
+      // Inform parent when playback state changes
+      video.addEventListener('play', () => postParent({ type:'play-event', muted: video.muted }));
+      video.addEventListener('pause', () => postParent({ type:'pause-event' }));
+      video.addEventListener('error', (e) => postParent({ type:'video-error', error: String(e) }));
+      video.addEventListener('waiting', () => postParent({ type:'waiting' }));
+      video.addEventListener('playing', () => postParent({ type:'playing-event' }));
+    })();
+  </script>
 </body>
 </html>
